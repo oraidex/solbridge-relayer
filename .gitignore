@@ -147,3 +147,5 @@ dist
 # DuckDB
 *.duckdb
 *.*.wal
+
+.env
