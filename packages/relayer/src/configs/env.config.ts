@@ -4,6 +4,8 @@ dotenv.config();
 
 const envVarsSchema = Joi.object()
   .keys({
+    EVM_PRIVATE_KEY: Joi.string().required(),
+    EVM_RPC_URL: Joi.string().required(),
     DUCKDB_CONNECTION_STRING: Joi.string().required(),
     COSMOS_RPC_URL: Joi.string().required(),
     OBRIDGE_RPC_URL: Joi.string().required(),
@@ -36,6 +38,10 @@ export default {
   },
   obridge: {
     rpcUrl: envVars.OBRIDGE_RPC_URL,
+  },
+  evm: {
+    privateKey: envVars.EVM_PRIVATE_KEY,
+    rpcUrl: envVars.EVM_RPC_URL,
   },
   logger: {
     webhookUrl: envVars.WEBHOOK_URL,

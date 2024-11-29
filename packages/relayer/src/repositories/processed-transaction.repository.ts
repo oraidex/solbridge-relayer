@@ -18,22 +18,23 @@ export class ProcessedTransaction {
             CREATE TABLE IF NOT EXISTS processed_transaction (
                 transaction_hash VARCHAR,
                 msg_index INTEGER,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at INTEGER,
                 PRIMARY KEY (transaction_hash, msg_index)
             );
         `);
   }
 
-  private async insert(transactionHash: string, msgIndex: number) {
+  public async insert(transactionHash: string, msgIndex: number) {
     const conn = this.duckdb.conn;
-    await conn.all(
-      `INSERT INTO processed_transaction VALUES (?)`,
+    await conn.run(
+      `INSERT INTO processed_transaction(transaction_hash, msg_index, created_at) VALUES (?, ?, ?)`,
       transactionHash,
-      msgIndex
+      msgIndex,
+      Math.floor(new Date().getTime() / 1000)
     );
   }
 
-  private async get(transactionHash: string, msgIndex: number) {
+  public async get(transactionHash: string, msgIndex: number) {
     const conn = this.duckdb.conn;
     const result = await conn.all(
       `SELECT * FROM processed_transaction WHERE transaction_hash = ? AND msg_index = ?`,

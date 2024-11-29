@@ -24,16 +24,16 @@ export const filterSendPackets = (item: IndexedTx): [boolean, Event[]] => {
       return false;
     }
     const packetData = parsePacketEvent(item);
-    if (packetData.packetSrcChannel !== "channel-29") {
+    if (packetData.packetSrcChannel !== "channel-260") {
       return false;
     }
     if (
       packetData.packetSrcPort !==
-      "wasm.orai195269awwnt5m6c843q6w7hp8rt0k7syfu9de4h0wz384slshuzps8y7ccm"
+      "wasm.orai1jtt8c2lz8emh8s708y0aeduh32xef2rxyg8y78lyvxn806cu7q0sjtxsnv"
     ) {
       return false;
     }
-    if (packetData.packetDstChannel !== "channel-1") {
+    if (packetData.packetDstChannel !== "channel-6") {
       return false;
     }
     if (packetData.packetDstPort !== "transfer") {
@@ -46,6 +46,7 @@ export const filterSendPackets = (item: IndexedTx): [boolean, Event[]] => {
 
 export class CosmwasmWatcher extends EventEmitter {
   public running = false;
+  public offset = 0;
 
   constructor(private syncData: SyncData) {
     super();
@@ -59,6 +60,7 @@ export class CosmwasmWatcher extends EventEmitter {
     this.syncData.startSpecificService("polling");
     this.syncData.on(CHANNEL.QUERY, async (chunk: Txs) => {
       try {
+        this.offset = chunk.offset;
         const data = chunk.txs
           .filter((item: IndexedTx) => filterSendPackets(item)[0])
           .map((item: IndexedTx) => {
@@ -87,12 +89,7 @@ export class CosmwasmWatcher extends EventEmitter {
   }
 }
 
-export const createCosmosBridgeWatcher = async () => {
-  const duckDb = await DuckDb.getInstance(env.duckDb.connectionString);
-  const blockOffset = new BlockOffset(duckDb);
-  await blockOffset.createTable();
-  const processedTransaction = new ProcessedTransaction(duckDb);
-  await processedTransaction.createTable();
+export const createCosmosBridgeWatcher = async (blockOffset: BlockOffset) => {
   const offset = await blockOffset.mayLoadBlockOffset(
     env.cosmos.syncBlockOffset
   );
