@@ -13,7 +13,6 @@ import { setTimeout } from "timers/promises";
 import {
   EVM_CHAIN_ID_TO_WORMHOLE_CHAIN_ID,
   ITERATION_DELAY,
-  WORMHOLE_ADDRESSES,
   WORMHOLE_BRIDGE_ADDRESSES,
 } from "./constants";
 import { BlockOffset } from "./repositories/block-offset.repository";
@@ -31,7 +30,7 @@ import {
 } from "@certusone/wormhole-sdk/lib/cjs/ethers-contracts";
 import { ERC20__factory } from "@oraichain/oraidex-common";
 import { UniversalAddress, ChainAddress } from "@wormhole-foundation/sdk";
-import { CHAIN_ID_SOLANA } from "@certusone/wormhole-sdk";
+import { CHAIN_ID_BSC, CHAIN_ID_SOLANA } from "@certusone/wormhole-sdk";
 
 export class OraiSolRelayer {
   public evmProvider?: ethers.providers.JsonRpcProvider;
@@ -59,7 +58,8 @@ export class OraiSolRelayer {
     const provider = new ethers.providers.JsonRpcProvider(connectRpcUrl);
     const network = await provider.getNetwork();
     const chainId = network.chainId;
-    const wormholeAddress = "0xB6F6D86a8f9879A9c87f643768d9efc38c1Da6E7";
+    const wormholeAddress =
+      WORMHOLE_BRIDGE_ADDRESSES[EVM_CHAIN_ID_TO_WORMHOLE_CHAIN_ID[chainId]];
     this.evmChainId = chainId;
     this.evmProvider = provider;
     this.evmWallet = this.evmWallet.connect(provider);
@@ -151,7 +151,7 @@ export class OraiSolRelayer {
           await this.oraiSolQueue.enqueue(packet);
         }
       }
-      // await this.syncBlockOffset();
+      await this.syncBlockOffset();
       await setTimeout(ITERATION_DELAY.ORAI_TO_SOL_BRIDGE_DELAY);
     }
   }

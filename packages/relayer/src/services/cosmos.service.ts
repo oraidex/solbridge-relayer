@@ -90,19 +90,19 @@ export class CosmwasmWatcher extends EventEmitter {
 }
 
 export const createCosmosBridgeWatcher = async (blockOffset: BlockOffset) => {
-  const offset = await blockOffset.mayLoadBlockOffset(
-    env.cosmos.syncBlockOffset
-  );
+  const { syncBlockOffset, syncLimit, maxThreadLevel, syncInterval } =
+    env.cosmos.bridge;
+  const offset = await blockOffset.mayLoadBlockOffset(syncBlockOffset);
   const syncDataOpt: SyncDataOptions = {
     rpcUrl: env.cosmos.rpcUrl,
-    limit: env.cosmos.syncLimit,
-    maxThreadLevel: env.cosmos.maxThreadLevel,
+    limit: syncLimit,
+    maxThreadLevel,
     offset: offset,
-    interval: env.cosmos.syncInterval,
+    interval: syncInterval,
     queryTags: [],
   };
-  if (offset < env.cosmos.syncBlockOffset) {
-    syncDataOpt.offset = env.cosmos.syncBlockOffset;
+  if (offset < syncBlockOffset) {
+    syncDataOpt.offset = syncBlockOffset;
   }
   const syncData = new SyncData(syncDataOpt);
   await syncData.initClient();
