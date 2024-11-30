@@ -165,7 +165,6 @@ export class OraiSolRelayer {
     );
     const dstEvmAddr = parseDestAddrFromMemo(packetData.memo);
     const recvEvmAddr = this.evmWallet.address;
-    console.log(this.initProvider, dstEvmAddr, recvEvmAddr);
     if (dstEvmAddr !== recvEvmAddr) {
       // skip if not correct addr
       return;
