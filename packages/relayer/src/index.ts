@@ -66,7 +66,7 @@ const main = async () => {
     {
       name: "GravityRelayer",
       logger: logger("GravityRelayer"),
-      spyEndpoint: "",
+      spyEndpoint: process.env.SPY_ENDPOINT,
       redis: {
         host: process.env.REDIS_HOST || "localhost",
         port: +process.env.REDIS_PORT || 6379,
