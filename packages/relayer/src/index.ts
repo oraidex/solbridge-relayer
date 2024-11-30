@@ -1,5 +1,6 @@
 import {
   Environment,
+  fetchVaaHash,
   StandardRelayerApp,
   StandardRelayerContext,
 } from "@wormhole-foundation/relayer-engine";
@@ -38,24 +39,24 @@ const interval = +process.env.INTERVAL || 2000;
 const queue = new MemoryQueue("ParsedVaaQueue");
 const attestMetaQueue = new MemoryQueue("AttestMetaQueue");
 const wallet = new ethers.Wallet(process.env.ETH_PRIVATE_KEY);
+// const wallet2 = new ethers.Wallet(process.env.ETH_PRIVATE_KEY_2);
+
 const jsonRpcProvider = new ethers.providers.JsonRpcProvider(
   process.env.BSC_RPC
 );
-const signer = wallet.connect(jsonRpcProvider);
-
+const signerGravity = wallet.connect(jsonRpcProvider);
+// const signerWormhole = wallet2.connect(jsonRpcProvider);
 const gravityContract = Gravity__factory.connect(
   gravityContracts["0x38"],
-  signer
+  signerGravity
 );
-const walletAddress = signer.address.toLowerCase();
+const walletAddress = signerGravity.address.toLowerCase();
 
-// Create the Token Bridge contract instance
+// // Create the Token Bridge contract instance
 const wormholeBridgeBsc = TokenBridge__factory.connect(
   CONTRACTS.MAINNET.bsc.token_bridge,
-  jsonRpcProvider
+  signerGravity
 );
-
-const whitelistSolanaToken = ["madHpjRn6bd8t78Rsy7NuSuNwWa2HU8ByPobZprHbHv"];
 
 export type GravityRelayerContext = StandardRelayerContext & AttestationContext;
 
@@ -65,9 +66,14 @@ const main = async () => {
     {
       name: "GravityRelayer",
       logger: logger("GravityRelayer"),
+      spyEndpoint: process.env.SPY_ENDPOINT,
+      redis: {
+        host: process.env.REDIS_HOST || "localhost",
+        port: +process.env.REDIS_PORT || 6379,
+      },
       missedVaaOptions: {
         startingSequenceConfig: {
-          1: BigInt(1038310),
+          1: BigInt(process.env.START_SEQUENCE || 0),
         },
       },
     }
@@ -81,33 +87,6 @@ const main = async () => {
       const seq = ctx.vaa!.sequence.toString();
       const bytes = ctx.vaa.bytes;
       const { payload } = ctx.tokenBridge;
-      const { payload: payloadAttestMeta, vaa: payloadVaa } = ctx.attestation;
-
-      // Check if the payload is an attestation
-      if (payloadAttestMeta.payloadType === TokenBridgePayload.AttestMeta) {
-        ctx.logger.info(`Found attestation at ${seq}`);
-        const tokenAddress = new UniversalAddress(
-          new Uint8Array(payloadAttestMeta.tokenAddress)
-        );
-
-        const tokenNativeAddress = tokenAddress.toNative(
-          chainIdToChain(payloadAttestMeta.tokenChain as any)
-        );
-        if (
-          chainIdToChain(payloadAttestMeta.tokenChain as any) === "Solana" &&
-          whitelistSolanaToken.includes(tokenNativeAddress.toString())
-        ) {
-          await attestMetaQueue.enqueue(bytes.toString("base64"));
-          ctx.logger.info(
-            `Attestation processing for: \n` +
-              `\tToken: ${payloadAttestMeta.tokenChain}:${tokenNativeAddress}\n` +
-              `\tSymbol: ${payloadAttestMeta.symbol}\n` +
-              `\tName: ${payloadAttestMeta.name}\n` +
-              `\tDecimals: ${payloadAttestMeta.decimals}\n`
-          );
-        }
-        return next();
-      }
       // Check if the payload is a transfer
       if (payload.payloadType == TokenBridgePayload.TransferWithPayload) {
         await queue.enqueue(bytes.toString("base64"));
@@ -124,29 +103,6 @@ const main = async () => {
         );
       }
 
-      if (payloadAttestMeta) {
-        ctx.logger.info(`Found attestation at ${seq}`);
-        const tokenAddress = new UniversalAddress(
-          new Uint8Array(payloadAttestMeta.tokenAddress)
-        );
-
-        const tokenNativeAddress = tokenAddress.toNative(
-          chainIdToChain(payloadAttestMeta.tokenChain as any)
-        );
-
-        if (
-          chainIdToChain(payloadAttestMeta.tokenChain as any) === "Solana" &&
-          whitelistSolanaToken.includes(tokenNativeAddress)
-        ) {
-          ctx.logger.info(
-            `Attestation processing for: \n` +
-              `\tToken: ${payloadAttestMeta.tokenChain}:${tokenNativeAddress}\n` +
-              `\tSymbol: ${payloadAttestMeta.symbol}\n` +
-              `\tName: ${payloadAttestMeta.name}\n` +
-              `\tDecimals: ${payloadAttestMeta.decimals}\n`
-          );
-        }
-      }
       next();
     }
   );
@@ -163,7 +119,7 @@ const main = async () => {
       const bytes = await queue.dequeue();
       const isTransferCompleted = await getIsTransferCompletedEth(
         CONTRACTS.MAINNET.bsc.token_bridge,
-        signer,
+        signerGravity,
         new Uint8Array(Buffer.from(bytes, "base64"))
       );
 
@@ -201,7 +157,7 @@ const main = async () => {
             );
             const tokenContract = ERC20__factory.connect(
               tokenWrappedAddress,
-              signer
+              signerGravity
             );
             const allowance = await tokenContract.allowance(
               walletAddress,
@@ -219,7 +175,7 @@ const main = async () => {
             }
             const redeemTx = await redeemOnEth(
               CONTRACTS.MAINNET.bsc.token_bridge,
-              signer,
+              signerGravity,
               new Uint8Array(Buffer.from(bytes, "base64"))
             );
             handleQueueProcessLogger.info(
@@ -241,6 +197,22 @@ const main = async () => {
     setTimeout(handleParsedVaaQueue, interval);
   };
   setTimeout(handleParsedVaaQueue, interval);
+
+  // const handleAttestMetaLogger = logger("handleAttestMeta");
+  // const handleAttestMetaVaaQueue = async () => {
+  //   const queueSize = await attestMetaQueue.size();
+  //   if (queueSize > 0) {
+  //     const bytes = await queue.dequeue();
+  //     const hex = Buffer.from(bytes, "base64").toString("hex");
+  //     const createdWrapped = await wormholeBridgeBsc.createWrapped("0x" + hex);
+  //     const createdWrappedReceipt = await createdWrapped.wait();
+  //     handleAttestMetaLogger.info(
+  //       `Create wrapped at txHash: ${createdWrappedReceipt.transactionHash}`
+  //     );
+  //   }
+  //   setTimeout(handleParsedVaaQueue, interval);
+  // };
+  // setTimeout(handleAttestMetaVaaQueue, interval);
 })();
 
 main();

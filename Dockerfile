@@ -1,30 +1,24 @@
-FROM node:20.15-bullseye as base
-RUN apt-get update &&\
-    apt-get install -y build-essential libc-dev &&\
-    apt-get clean
-RUN npm install -g node-gyp
+# Use the Node.js image with Alpine for a smaller footprint
+FROM node:22-alpine3.19
 
-FROM base as builder
+RUN apk add --no-cache g++ gcc make python3
+
+# Set working directory
 WORKDIR /app
 
-COPY ./package.json ./yarn.lock  ./lerna.json ./.yarnrc.yml ./
-COPY packages/cw-to-ton/package.json /app/packages/cw-to-ton/package.json
-COPY packages/ton-to-cw/package.json /app/packages/ton-to-cw/package.json
-COPY packages/orchestrator/package.json /app/packages/orchestrator/package.json
-COPY patches /app/patches
-RUN yarn install --frozen-lockfile
+# Copy package.json and yarn.lock first to install dependencies
+COPY package.json yarn.lock ./
 
-COPY . .
+COPY ./packages/relayer/package.json ./packages/relayer/package.json
 
-RUN yarn build
+COPY .yarnrc.yml .yarnrc.yml
 
+# # # Copy the rest of the application code
+COPY ./packages ./packages
 
-FROM base as main
+# # Install dependencies
+RUN yarn install --immutable
 
-WORKDIR /app 
-
-COPY --from=builder /app/packages/orchestrator/dist/ ./dist
-
-CMD ["node", "dist/index.js"]
-
+# # Start the server
+CMD ["yarn --cwd ./packages/relayer", "start"]
 
