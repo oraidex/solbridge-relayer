@@ -1,6 +1,5 @@
 import {
   Environment,
-  fetchVaaHash,
   StandardRelayerApp,
   StandardRelayerContext,
 } from "@wormhole-foundation/relayer-engine";
@@ -12,11 +11,7 @@ import {
   redeemOnEth,
 } from "@certusone/wormhole-sdk";
 
-import {
-  chainIdToChain,
-  deserialize,
-  UniversalAddress,
-} from "@wormhole-foundation/sdk";
+import { deserialize } from "@wormhole-foundation/sdk";
 import { TokenBridge__factory } from "./types";
 
 import { logger } from "./logger";
@@ -33,11 +28,11 @@ import {
   AttestationContext,
   attestationMiddleware,
 } from "./attestation.middleware";
+import { deNormalizeAmount } from "./utils";
 config();
 
 const interval = +process.env.INTERVAL || 2000;
 const queue = new MemoryQueue("ParsedVaaQueue");
-const attestMetaQueue = new MemoryQueue("AttestMetaQueue");
 const wallet = new ethers.Wallet(process.env.ETH_PRIVATE_KEY);
 // const wallet2 = new ethers.Wallet(process.env.ETH_PRIVATE_KEY_2);
 
@@ -66,7 +61,7 @@ const main = async () => {
     {
       name: "GravityRelayer",
       logger: logger("GravityRelayer"),
-      spyEndpoint: process.env.SPY_ENDPOINT,
+      spyEndpoint: process.env.SPY_ENDPOINT || "localhost:7073",
       redis: {
         host: process.env.REDIS_HOST || "localhost",
         port: +process.env.REDIS_PORT || 6379,
@@ -159,11 +154,15 @@ const main = async () => {
               tokenWrappedAddress,
               signerGravity
             );
-            const allowance = await tokenContract.allowance(
-              walletAddress,
-              gravityContracts["0x38"]
+            const [allowance, decimal] = await Promise.all([
+              tokenContract.allowance(walletAddress, gravityContracts["0x38"]),
+              tokenContract.decimals(),
+            ]);
+            const normalizedAmount = deNormalizeAmount(
+              amount.toString(),
+              decimal
             );
-            if (allowance.toBigInt() < amount) {
+            if (allowance.toBigInt() < BigInt(normalizedAmount)) {
               const txApprove = await tokenContract.approve(
                 gravityContracts["0x38"],
                 9999999999999999999999999n
@@ -183,12 +182,12 @@ const main = async () => {
             );
             const txSendToCosmos = await gravityContract.sendToCosmos(
               tokenWrappedAddress,
-              `channel-6/${oraiWallet}`,
-              amount
+              `${process.env.CHANNEL}/${oraiWallet}`,
+              normalizedAmount
             );
             const txSendToCosmosReceipt = await txSendToCosmos.wait();
             handleQueueProcessLogger.info(
-              `Send to Cosmos txHash: ${txSendToCosmosReceipt.transactionHash}`
+              `Send ${normalizedAmount} ${tokenWrappedAddress} to Cosmos:${oraiWallet} txHash: ${txSendToCosmosReceipt.transactionHash}`
             );
           }
         }
