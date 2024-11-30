@@ -2,12 +2,12 @@ import {
   CosmwasmWatcherEvent,
   createCosmosBridgeWatcher,
 } from "@src/services/cosmos.service";
-import { OraiSolRelayer } from "./orai-to-sol";
-import { logger } from "./configs/logger.config";
-import { DuckDb } from "./services/duckdb.service";
-import envConfig from "./configs/env.config";
-import { BlockOffset } from "./repositories/block-offset.repository";
-import { ProcessedTransaction } from "./repositories/processed-transaction.repository";
+import { OraiSolRelayer } from "../../orai-to-sol";
+import { logger } from "../../configs/logger.config";
+import { DuckDb } from "../../services/duckdb.service";
+import envConfig from "../../configs/env.config";
+import { BlockOffset } from "../../repositories/block-offset.repository";
+import { ProcessedTransaction } from "../../repositories/processed-transaction.repository";
 import { ethers } from "ethers";
 
 const main = async () => {

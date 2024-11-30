@@ -25,18 +25,18 @@ export class BlockOffset {
     return block_offset;
   }
 
-  private async insertBlockOffset(height: number) {
-    const conn = this.duckdb.conn;
-    await conn.all(`INSERT INTO block_offset VALUES (?)`, height);
-  }
-
-  private async getBlockOffset() {
+  public async getBlockOffset() {
     const conn = this.duckdb.conn;
     const result = await conn.all(`SELECT * FROM block_offset`);
     if (result.length === 0) {
       return 0;
     }
     return result[0].height as number;
+  }
+
+  private async insertBlockOffset(height: number) {
+    const conn = this.duckdb.conn;
+    await conn.all(`INSERT INTO block_offset VALUES (?)`, height);
   }
 
   public async updateBlockOffset(height: number) {

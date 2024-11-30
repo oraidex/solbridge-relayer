@@ -193,7 +193,6 @@ export class OraiSolRelayer {
     if (data) {
       return;
     }
-    console.log("Hello world", { data });
 
     if (relayerBalance.lt(sendingAmount)) {
       throw new Error("Not enough balance to send!");
