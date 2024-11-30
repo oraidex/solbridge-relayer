@@ -1173,8 +1173,6 @@
     tslib "^2.4.0"
     undici "^5.4.0"
 
-<<<<<<< HEAD
-=======
 "@discordjs/rest@^2.3.0", "@discordjs/rest@^2.4.0":
   version "2.4.0"
   resolved "https://registry.npmjs.org/@discordjs/rest/-/rest-2.4.0.tgz#63bfc816af58af844914e3589d7eae609cd199b5"
@@ -1210,7 +1208,6 @@
     tslib "^2.6.2"
     ws "^8.16.0"
 
->>>>>>> main
 "@esbuild/aix-ppc64@0.23.1":
   version "0.23.1"
   resolved "https://registry.npmjs.org/@esbuild/aix-ppc64/-/aix-ppc64-0.23.1.tgz#51299374de171dbd80bb7d838e1cfce9af36f353"
