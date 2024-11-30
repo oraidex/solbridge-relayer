@@ -29,10 +29,9 @@ import {
   Bridge__factory,
 } from "@certusone/wormhole-sdk/lib/cjs/ethers-contracts";
 import { ERC20__factory } from "@oraichain/oraidex-common";
-import { UniversalAddress, ChainAddress } from "@wormhole-foundation/sdk";
-import { CHAIN_ID_BSC, CHAIN_ID_SOLANA } from "@certusone/wormhole-sdk";
-
-export class OraiSolRelayer {
+import { UniversalAddress } from "@wormhole-foundation/sdk";
+import { CHAIN_ID_SOLANA } from "@certusone/wormhole-sdk";
+class OraiSolRelayer {
   public evmProvider?: ethers.providers.JsonRpcProvider;
   public evmChainId?: number;
   protected requestBridgeQueue: MemoryQueue<ProcessBridgeTxParams>;
@@ -257,3 +256,5 @@ export class OraiSolRelayer {
     ]);
   }
 }
+
+export default OraiSolRelayer;

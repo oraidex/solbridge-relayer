@@ -44,7 +44,7 @@ export default {
   },
   wormhole: {
     startSequence: envVars?.START_SEQUENCE || 0,
-    spyEndpoint: envVars?.SPY_ENDPOINT || "http://localhost:7073",
+    spyEndpoint: envVars?.SPY_ENDPOINT || "localhost:7073",
   },
   obridge: {
     rpcUrl: envVars.OBRIDGE_RPC_URL,

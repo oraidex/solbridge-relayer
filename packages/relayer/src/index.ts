@@ -1,5 +1,5 @@
 import { createCosmosBridgeWatcher } from "@src/services/cosmos.service";
-import { OraiSolRelayer } from "./orai-to-sol";
+import OraiSolRelayer from "./orai-to-sol";
 import { logger } from "./configs/logger.config";
 import { DuckDb } from "./services/duckdb.service";
 import envConfig from "./configs/env.config";
