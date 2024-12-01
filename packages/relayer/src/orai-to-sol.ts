@@ -18,7 +18,6 @@ import {
 import { BlockOffset } from "./repositories/block-offset.repository";
 import { ProcessedTransaction } from "./repositories/processed-transaction.repository";
 import {
-  parseDestAddrFromMemo,
   parseTokenAddress,
   retryWrapperFn,
   validateSolanaAddress,
@@ -31,6 +30,7 @@ import {
 import { ERC20__factory } from "@oraichain/oraidex-common";
 import { UniversalAddress } from "@wormhole-foundation/sdk";
 import { CHAIN_ID_SOLANA } from "@certusone/wormhole-sdk";
+import { sleep } from "@wormhole-foundation/relayer-engine";
 class OraiSolRelayer {
   public evmProvider?: ethers.providers.JsonRpcProvider;
   public evmChainId?: number;
@@ -73,11 +73,17 @@ class OraiSolRelayer {
     while (true) {
       const size = await this.requestBridgeQueue.size();
       if (size > 0) {
-        const packet = await this.requestBridgeQueue.dequeue();
+        const packet: ProcessBridgeTxParams =
+          await this.requestBridgeQueue.dequeue();
         try {
           await this.handleRequestBridgePacket(packet);
         } catch (err) {
-          this.logger.error("[handleRequestBridgePacket] failed:", err);
+          this.logger.error(
+            "[handleRequestBridgePacket] failed: ",
+            err,
+            packet.txHash,
+            packet.txMemo
+          );
         }
       }
       await setTimeout(ITERATION_DELAY.REQUEST_BRIDGE_PACKET_DELAY);
@@ -88,15 +94,32 @@ class OraiSolRelayer {
     const { sendPacket, txHash } = packet;
     const stargateClient = await StargateClient.connect(env.obridge.rpcUrl);
     const packetData = parsePacketEvent(sendPacket);
-    const msgIndex = Number(
-      sendPacket.attributes.find((item) => item.key === "msg_index")?.value || 0
+    if (!packetData) {
+      this.logger.warn(
+        "[handleRequestBridgePacket] parsePacketEvent failed due to missing attributes. Skip this packet with tx hash and memo",
+        packet.txHash,
+        packet.txMemo
+      );
+      return;
+    }
+    const msgIndexItem = sendPacket.attributes.find(
+      (item) => item.key === "msg_index"
     );
+    if (!msgIndexItem) {
+      this.logger.warn(
+        "[handleRequestBridgePacket] Could not find any attribute with key 'msg_index'. Skip this packet with tx hash and memo",
+        packet.txHash,
+        packet.txMemo
+      );
+      return;
+    }
+    const msgIndex = Number(msgIndexItem.value);
     const packetTimeout = new Date(
       Math.floor(Number(packetData.packetTimeoutTimestamp) / 1000000)
     ).getTime();
     const currentTime = new Date().getTime();
     if (packetTimeout < currentTime) {
-      this.logger.info(
+      this.logger.warn(
         `Packet with txHash ${txHash} on msg index ${msgIndex} has been timeout, and removed out of queue!`
       );
       return;
@@ -129,7 +152,12 @@ class OraiSolRelayer {
         ITERATION_DELAY.RETRY_DELAY
       );
     } catch (err) {
-      this.logger.error("[handleRequestBridgePacket] failed:", err);
+      this.logger.error(
+        "[handleRequestBridgePacket] failed: ",
+        err,
+        packet.txHash,
+        packet.txMemo
+      );
     }
   }
 
@@ -140,14 +168,28 @@ class OraiSolRelayer {
         const packet = await this.oraiSolQueue.dequeue();
         try {
           const parsedPacket = parsePacketEvent(packet.sendPacket);
+          if (!parsedPacket) {
+            this.logger.warn(
+              "[runOraiSolProcess] parsePacketEvent failed due to missing attributes. Skip this packet with tx hash and memo",
+              packet.txHash,
+              packet.txMemo
+            );
+            continue;
+          }
           console.log(parsedPacket);
           this.logger.info(
             `[runOraiSolProcess] found packet with sequence ${parsedPacket.packetSequence} at txHash: ${packet.txHash}`
           );
           await this.handleOraiSolPacket(packet);
         } catch (err) {
-          this.logger.error("[handleOraiSolPacket] failed:", err);
-          await this.oraiSolQueue.enqueue(packet);
+          this.logger.error(
+            "[handleOraiSolPacket] failed: ",
+            err,
+            packet.txHash,
+            packet.txMemo
+          );
+          // DO NOT retry by re-adding it to the queue! If something goes wrong -> handle manually
+          // await this.oraiSolQueue.enqueue(packet);
         }
       }
       await this.syncBlockOffset();
@@ -158,32 +200,86 @@ class OraiSolRelayer {
   async handleOraiSolPacket(packet: ProcessBridgeTxParams) {
     const { sendPacket, txHash, txMemo } = packet;
     const parsedPacket = parsePacketEvent(sendPacket);
+    if (!parsedPacket) {
+      this.logger.warn(
+        "[handleOraiSolPacket] parsePacketEvent failed due to missing attributes. Skip this packet with tx hash and memo",
+        packet.txHash,
+        packet.txMemo
+      );
+      return;
+    }
     const packetData = parsedPacket.packetData;
-    const msgIndex = Number(
-      sendPacket.attributes.find((item) => item.key === "msg_index")?.value || 0
+    const msgIndexItem = sendPacket.attributes.find(
+      (item) => item.key === "msg_index"
     );
-    const dstEvmAddr = parseDestAddrFromMemo(packetData.memo);
+    if (!msgIndexItem) {
+      this.logger.warn(
+        "[handleOraiSolPacket] Could not find any attribute with key 'msg_index'. Skip this packet with tx hash and memo",
+        packet.txHash,
+        packet.txMemo
+      );
+      return;
+    }
+    const msgIndex = Number(msgIndexItem.value);
+    const dstEvmAddr = parseTokenAddress(packetData.memo);
+    if (!dstEvmAddr) {
+      this.logger.error(
+        "[handleOraiSolPacket] packet data memo is not a valid dst Evm Address. Skipping this packet...",
+        packet.txHash,
+        packet.txMemo,
+        packetData.memo
+      );
+      return;
+    }
     const recvEvmAddr = this.evmWallet.address;
     if (dstEvmAddr !== recvEvmAddr) {
       // skip if not correct addr
+      this.logger.warn(
+        "[handleOraiSolPacket] dstEvmAddr is not recvEvmAddr, skip this packet Sol Bridge...",
+        dstEvmAddr,
+        recvEvmAddr,
+        packet.txHash,
+        packet.txMemo
+      );
       return;
     }
     if (!this.initProvider) {
+      this.logger.error(
+        "[handleOraiSolPacket] The initProvider is empty!",
+        packet.txHash,
+        packet.txMemo
+      );
       return;
     }
     if (!validateSolanaAddress(txMemo)) {
+      this.logger.warn(
+        "[handleOraiSolPacket] tx memo is not a valid Solana Address.",
+        packet.txHash,
+        packet.txMemo
+      );
       return;
     }
 
-    const wormholeBridgeAddress =
+    const wormholeBridgeAddress: string =
       WORMHOLE_BRIDGE_ADDRESSES[
         EVM_CHAIN_ID_TO_WORMHOLE_CHAIN_ID[this.evmChainId!]
       ];
     const solAddress = txMemo;
     const tokenAddress = parseTokenAddress(packetData.denom);
+    if (!tokenAddress) {
+      this.logger.error(
+        "[handleOraiSolPacket] packet data denom is not a valid token Address. Skipping this packet...",
+        packet.txHash,
+        packet.txMemo,
+        packetData.denom
+      );
+      return;
+    }
     const tokenClient = ERC20__factory.connect(tokenAddress, this.evmWallet);
     const relayerBalance = await tokenClient.balanceOf(recvEvmAddr);
     const sendingAmount = ethers.BigNumber.from(packetData.amount);
+
+    // try to find duplicates
     const data = await this.processedTransactionRepository.get(
       txHash,
       msgIndex
@@ -193,7 +289,7 @@ class OraiSolRelayer {
     }
 
     if (relayerBalance.lt(sendingAmount)) {
-      throw new Error("Not enough balance to send!");
+      throw new Error("[handleOraiSolPacket] Not enough balance to send!");
     }
 
     const approveTx = await tokenClient.approve(
@@ -213,12 +309,23 @@ class OraiSolRelayer {
         0,
         "0x"
       );
-    this.logger.info(`Transfer token at ${transferTx.hash}`);
-    console.log({
-      txHash,
-      msgIndex,
-    });
-    await this.processedTransactionRepository.insert(txHash, msgIndex);
+    this.logger.info(
+      `Transfer token at ${transferTx.hash} with msg index ${msgIndex}`
+    );
+    // This part is important. We need to make sure the tx hash and msg index is stored before moving on to the next tx
+    while (true) {
+      try {
+        await this.processedTransactionRepository.insert(txHash, msgIndex);
+      } catch (error) {
+        this.logger.error(
+          `[handleOraiSolPacket] Error inserting tx hash ${txHash} with msgIndex ${msgIndex} into the db. Retrying...`,
+          txHash,
+          msgIndex,
+          packet.txMemo
+        );
+        await setTimeout(ITERATION_DELAY.ORAI_TO_SOL_BRIDGE_DELAY);
+      }
+    }
   }
 
   async syncBlockOffset() {

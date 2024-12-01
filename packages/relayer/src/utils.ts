@@ -2,12 +2,10 @@ import { PublicKey } from "@solana/web3.js";
 
 export function parseTokenAddress(denom: string) {
   const lastDenom = denom.split("/").pop();
-  return lastDenom.split("oraib")[1];
-}
-
-export function parseDestAddrFromMemo(denom: string) {
-  const lastDenom = denom.split("/").pop();
-  return lastDenom.split("oraib")[1];
+  if (!lastDenom) return "";
+  const lastDenomSplit = lastDenom.split("oraib");
+  if (lastDenomSplit.length > 0) return lastDenomSplit[1];
+  return "";
 }
 
 export function retryWrapperFn<T>(
